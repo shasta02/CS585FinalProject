@@ -2,46 +2,9 @@ import os
 import cv2
 import numpy as np
 import tensorflow as tf
-
-import matplotlib.pyplot as plt
-from PIL import Image
-
 from keras import layers, models
 
-# from sklearn.model_selection import train_test_split 
-# from keras.utils import to_categorical 
-# from keras.models import Sequential 
-# from keras.layers import Conv2D, MaxPool2D, Dense, Flatten, Dropout
-
-
-
 Image_dir = 'train/images'
-
-# sample = 9
-# image_files = os.listdir(Image_dir)
-
-# # Randomly select num_samples images
-# rand_image = random.sample(image_files, sample)
-
-# fig, axes = plt.subplots(3, 3, figsize=(11, 11))
-
-# for i in range(sample):
-#     image = rand_image[i]
-#     ax = axes[i // 3, i % 3]
-#     ax.imshow(plt.imread(os.path.join(Image_dir, image)))
-#     ax.set_title(f'Image {i+1}')
-#     ax.axis('off')
-
-# plt.tight_layout()
-# plt.show()
-
-
-# image = cv2.imread("train/images/00014_00006_00011_png.rf.7c2d9a379350594748c581895b5c5ea1.jpg")
-# h, w, c = image.shape
-# plt.imshow(image)
-# plt.title(f"Image Shape: {w} x {h} and 3 channels")
-# plt.show()
-
 
 def read_image(image_path, image_size=(224, 224)):
     """
@@ -73,7 +36,6 @@ def read_labels(label_path, num_classes=15):
     
     return classes_one_hot, np.array(boxes)
 
-
 def load_dataset(dataset_dir, num_classes=15):
     """
     Loads the dataset from a given directory.
@@ -101,11 +63,12 @@ def load_dataset(dataset_dir, num_classes=15):
             tf.ragged.constant(class_labels, dtype=tf.float32), 
             tf.ragged.constant(bounding_boxes, dtype=tf.float32))
 
+# Load datasets
 train_images, train_labels, train_boxes = load_dataset('train', num_classes=15)
+val_images, val_labels, val_boxes = load_dataset('valid', num_classes=15)
+test_images, test_labels, test_boxes = load_dataset('test', num_classes=15)
 
-# val_images, val_labels, val_boxes = load_dataset('path/to/validation', num_classes=15)
-# test_images, test_labels, test_boxes = load_dataset('path/to/test', num_classes=15)
-
+# Model definition
 classes = 15
 model = models.Sequential([
     layers.Conv2D(32, (3, 3), activation='relu', input_shape=(224, 224, 3)),
@@ -119,8 +82,38 @@ model = models.Sequential([
     layers.Dense(classes + 4)
 ])
 
+# Compile the model
 model.compile(optimizer='adam',
-              loss={'class_output': 'categorical_crossentropy', 'box_output': 'mse'},
+              loss='mse',  # Mean Squared Error for bounding box and possibly classification
               metrics=['accuracy'])
 
+# Print model summary
 print(model.summary())
+
+def preprocess_labels(labels, boxes, num_classes=15):
+    num_samples = labels.shape[0]
+    processed_labels = np.zeros((num_samples, num_classes + 4), dtype=np.float32)
+    
+    for idx, (label, box) in enumerate(zip(labels.to_list(), boxes.to_list())):
+        # Flatten and reshape the one-hot encoded class labels
+        one_hot_label = tf.keras.utils.to_categorical(label, num_classes=num_classes).flatten()
+        
+        one_hot_label = one_hot_label.reshape((num_classes, num_classes))
+        # Concatenate the flattened one-hot encoded class label with the bounding box
+        processed_labels[idx, :num_classes] = one_hot_label
+        processed_labels[idx, num_classes:] = box
+    
+    return processed_labels
+
+# Preprocess labels for training and validation
+train_targets = preprocess_labels(train_labels, train_boxes, num_classes=15)
+val_targets = preprocess_labels(val_labels, val_boxes, num_classes=15)
+
+# Train the model
+history = model.fit(
+    train_images, 
+    train_targets, 
+    epochs=1,
+    validation_data=(val_images, val_targets),
+    batch_size=32
+)
