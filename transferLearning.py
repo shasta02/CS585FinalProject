@@ -108,7 +108,7 @@ output = Dense(15, activation='softmax', name='class_output')(z)
 model = Model(inputs=[image_input, bbox_input], outputs=output)
 
 # Compile the model
-model.compile(optimizer=Adam(lr=0.0001),
+model.compile(optimizer=Adam(learning_rate=0.0001),
               loss='categorical_crossentropy',
               metrics=['accuracy'])
 
