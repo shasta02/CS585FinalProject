@@ -3,9 +3,11 @@ import cv2
 import numpy as np
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Dense, Dropout, GlobalAveragePooling2D, concatenate
+from tensorflow.keras.layers import Input, Dense, Dropout, GlobalAveragePooling2D, concatenate, BatchNormalization, MaxPooling2D
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
+
 
 def read_image(image_path, image_size=(224, 224)):
     image = cv2.imread(image_path)
@@ -56,44 +58,53 @@ train_images, train_labels, train_bboxes = load_dataset('train', num_classes=15)
 val_images, val_labels, val_bboxes = load_dataset('valid', num_classes=15)
 test_images, test_labels, test_bboxes = load_dataset('test', num_classes=15)
 
-# Initialize the ResNet50 base model
+# Enhanced model with Batch Normalization and learning rate scheduling
 base_model = ResNet50(include_top=False, weights='imagenet', input_shape=(224, 224, 3))
-base_model.trainable = False  # Freeze the base model layers
+base_model.trainable = True  # Enable training in the last blocks
 
-# Define two inputs
+for layer in base_model.layers[:-10]:  # Freezing all layers except for the last 10
+    layer.trainable = False
+
 image_input = Input(shape=(224, 224, 3), name='image_input')
 bbox_input = Input(shape=(4,), name='bbox_input')
 
-# Pass image_input through the base model
-x = base_model(image_input, training=False)
-x = GlobalAveragePooling2D()(x)
-x = Dense(1024, activation='relu')(x)
-x = Dropout(0.5)(x)
+x = base_model(image_input, training=True)
+x = MaxPooling2D(pool_size=(2, 2))(x)  # Adjust pool_size to match your needs, reduces to (None, 3, 3, 2048) if from (7,7,2048)
+x = GlobalAveragePooling2D()(x)  # Now x has shape (None, 2048)
 
-# Process bbox_input
+x = Dense(64, activation='relu')(x)
+x = Dropout(0.2)(x)
+
+
+x = Dense(512, activation='relu')(x)
+
+x = Dropout(0.2)(x)
+
+x = Dense(1024, activation='relu')(x)
+
+x = BatchNormalization()(x)
+x = Dropout(0.2)(x)
+
+print(x)
+
 y = Dense(32, activation='relu')(bbox_input)
 y = Dense(64, activation='relu')(y)
+print(y)
 
-# Concatenate the outputs
 combined = concatenate([x, y])
-
-# Final classification layer
 output = Dense(15, activation='softmax', name='class_output')(combined)
 
-# Create and compile the model
 model = Model(inputs=[image_input, bbox_input], outputs=output)
 model.compile(optimizer=Adam(learning_rate=0.0001),
               loss='categorical_crossentropy',
               metrics=['accuracy'])
 
-# Model summary
-print(model.summary())
+reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, min_lr=0.00001)
+early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
 
-# Train the model
-history = model.fit(
-    [train_images, train_bboxes],
-    train_labels,
-    epochs=35,
+model.fit(
+    [train_images, train_bboxes], train_labels,
     validation_data=([val_images, val_bboxes], val_labels),
-    batch_size=32
+    epochs=50, batch_size=32,
+    callbacks=[reduce_lr, early_stopping]
 )

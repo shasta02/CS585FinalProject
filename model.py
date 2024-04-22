@@ -5,6 +5,8 @@ from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, MaxPooling2D, Flatten, Dense, Dropout, concatenate
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.regularizers import l2
+
 
 # Function to read and preprocess the images
 def read_image(image_path, image_size=(224, 224)):
@@ -76,15 +78,18 @@ image_input = Input(shape=(224, 224, 3), name='image_input')
 bbox_input = Input(shape=(4,), name='bbox_input')
 
 # Define the CNN for image processing
-x = Conv2D(32, (3, 3), activation='relu')(image_input)
+x = Conv2D(32, (3, 3), activation='relu', kernel_regularizer=l2(0.001))(image_input)
 x = MaxPooling2D((2, 2))(x)
-x = Conv2D(64, (3, 3), activation='relu')(x)
+x = Conv2D(64, (3, 3), activation='relu', kernel_regularizer=l2(0.001))(x)
 x = MaxPooling2D((2, 2))(x)
-x = Conv2D(128, (3, 3), activation='relu')(x)
+x = Conv2D(128, (3, 3), activation='relu', kernel_regularizer=l2(0.001))(x)
 x = Flatten()(x)
+x = Dropout(0.5)(x)
+
 
 # Define a simple feed-forward network for bounding box data
 y = Dense(32, activation='relu')(bbox_input)
+y = Dropout(0.5)(y)
 y = Dense(64, activation='relu')(y)
 
 # Concatenate the outputs of the two networks
@@ -110,7 +115,7 @@ print(model.summary())
 history = model.fit(
     [train_images, train_bboxes],  # Provide both inputs as a list
     train_labels,
-    epochs=15,  # Adjust the number of epochs as needed
+    epochs=50,  # Adjust the number of epochs as needed
     validation_data=([val_images, val_bboxes], val_labels),
     batch_size=32
 )

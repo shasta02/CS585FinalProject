@@ -72,7 +72,7 @@ x = base_model(image_input, training=True)
 x = GlobalAveragePooling2D()(x)
 x = Dense(1024, activation='relu')(x)
 x = BatchNormalization()(x)
-x = SpatialDropout2D(0.5)(x)  # Adding spatial dropout
+x = Dropout(0.5)(x)  # Use standard dropout here
 x = Dense(512, activation='relu')(x)
 x = Dropout(0.5)(x)
 
@@ -101,8 +101,11 @@ data_gen = ImageDataGenerator(
     fill_mode='nearest'
 )
 
-# Train the model with both inputs
+# Example call to model.fit, ensuring both inputs are provided as a list
 history = model.fit(
-    data_gen.flow(train_images, train_labels, batch_size=32),
-    epochs=50,
-    validation_data=([val_images, val_bboxes]))
+    [train_images, train_bboxes],  # This should be a list with two elements
+    train_labels,
+    epochs=25,
+    validation_data=([val_images, val_bboxes], val_labels),  # Also here, for validation
+    batch_size=32
+)

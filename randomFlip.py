@@ -6,12 +6,18 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Dense, Dropout, GlobalAveragePooling2D, concatenate
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.applications.resnet50 import ResNet50, preprocess_input
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 
 def read_image(image_path, image_size=(224, 224)):
     image = cv2.imread(image_path)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     image = cv2.resize(image, image_size)
     image = preprocess_input(image)  # Use preprocess_input from ResNet50
+    
+    # Horizontal random flipping with 50% probability
+    if np.random.rand() < 0.5:
+        image = np.fliplr(image)
+    
     return image
 
 def read_labels(label_path, num_classes=15):
@@ -30,6 +36,7 @@ def read_labels(label_path, num_classes=15):
     
     return class_label_one_hot, np.array(bbox)
 
+# Modify your load_dataset function to use ImageDataGenerator for data augmentation
 def load_dataset(dataset_dir, num_classes=15):
     images = []
     class_labels = []
@@ -38,6 +45,9 @@ def load_dataset(dataset_dir, num_classes=15):
     image_dir = os.path.join(dataset_dir, 'images')
     label_dir = os.path.join(dataset_dir, 'labels')
 
+    # Data augmentation with ImageDataGenerator
+    datagen = ImageDataGenerator()
+    
     for image_name in os.listdir(image_dir):
         image_path = os.path.join(image_dir, image_name)
         label_path = os.path.join(label_dir, image_name.replace('.png', '.txt').replace('.jpg', '.txt'))
@@ -45,10 +55,16 @@ def load_dataset(dataset_dir, num_classes=15):
         image = read_image(image_path)
         class_label, bbox = read_labels(label_path, num_classes)
 
-        images.append(image)
-        class_labels.append(class_label)
-        bounding_boxes.append(bbox)
+        # Reshape image for ImageDataGenerator
+        image = image.reshape((1,) + image.shape)
 
+        # Data augmentation
+        for batch in datagen.flow(image, batch_size=1):
+            images.append(batch[0])
+            class_labels.append(class_label)
+            bounding_boxes.append(bbox)
+            break  # Only one augmentation per image
+        
     return np.array(images), np.array(class_labels), np.array(bounding_boxes)
 
 # Load datasets
@@ -93,7 +109,7 @@ print(model.summary())
 history = model.fit(
     [train_images, train_bboxes],
     train_labels,
-    epochs=35,
+    epochs=25,
     validation_data=([val_images, val_bboxes], val_labels),
     batch_size=32
 )
